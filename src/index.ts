@@ -66,9 +66,10 @@ app.post('/scrape', async (req, res) => {
             }
         });
 
+        console.log('Début du scraping pour:', url);
         await page.goto(url, {
-            waitUntil: 'domcontentloaded',
-            timeout: 30000
+            waitUntil: 'networkidle',
+            timeout: 60000
         });
 
         // Attendre que les éléments clés soient chargés
@@ -126,13 +127,11 @@ app.post('/scrape', async (req, res) => {
             throw new Error('Impossible de trouver les informations du produit');
         }
 
+        console.log('Données récupérées:', JSON.stringify(data, null, 2));
         res.json({ data });
     } catch (error) {
         console.error('Erreur:', error);
-        res.status(500).json({
-            error: error instanceof Error ? error.message : 'Erreur inconnue',
-            stack: error instanceof Error ? error.stack : null
-        });
+        res.status(500).json({ error: String(error) });
     } finally {
         if (browser) {
             try {
