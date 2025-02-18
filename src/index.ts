@@ -43,7 +43,12 @@ app.post('/scrape', async (req, res) => {
 
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-            viewport: { width: 1920, height: 1080 }
+            viewport: { width: 1920, height: 1080 },
+            extraHTTPHeaders: {
+                'Accept-Language': 'fr-FR,fr;q=0.9',
+                'Referer': 'https://www.amazon.ca/',
+                'Upgrade-Insecure-Requests': '1'
+            }
         });
 
         const page = await context.newPage();
@@ -65,6 +70,7 @@ app.post('/scrape', async (req, res) => {
 
         // Attendre que les éléments clés soient chargés
         await page.waitForSelector('#productTitle', { timeout: 5000 }).catch(() => null);
+        console.log(await page.content());
 
         const data = await page.evaluate(() => {
             const title = document.querySelector('#productTitle')?.textContent?.trim() || '';
@@ -121,7 +127,8 @@ app.post('/scrape', async (req, res) => {
     } catch (error) {
         console.error('Erreur:', error);
         res.status(500).json({
-            error: error instanceof Error ? error.message : 'Erreur inconnue'
+            error: error instanceof Error ? error.message : 'Erreur inconnue',
+            stack: error instanceof Error ? error.stack : null
         });
     } finally {
         if (browser) {
