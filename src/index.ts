@@ -1,5 +1,5 @@
 import express from 'express';
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
@@ -15,6 +15,18 @@ interface ProductData {
     photos: string[];
     product_url: string;
 }
+
+// Fonction pour détecter le chemin de Chrome selon la plateforme
+const getChromePath = () => {
+    switch (process.platform) {
+        case 'win32':
+            return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+        case 'darwin':
+            return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+        default:
+            return '/usr/bin/google-chrome';
+    }
+};
 
 app.get('/', (_, res) => {
     res.send('Service de scraping Amazon actif');
@@ -32,6 +44,7 @@ app.post('/scrape', async (req, res) => {
     try {
         browser = await puppeteer.launch({
             headless: "new",
+            executablePath: getChromePath(),
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -41,7 +54,6 @@ app.post('/scrape', async (req, res) => {
 
         const page = await browser.newPage();
 
-        // Configuration du User Agent
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
 
         await page.goto(url, {
