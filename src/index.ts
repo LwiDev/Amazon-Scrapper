@@ -12,8 +12,8 @@ app.use(cors());
 interface ProductData {
     title: string;
     price: string;
-    image: string;
-    url: string;
+    photos: string[];
+    product_url: string;
 }
 
 app.get('/', (_, res) => {
@@ -30,20 +30,41 @@ app.post('/scrape', async (req, res) => {
     let browser = null;
 
     try {
+        // Configuration spécifique pour Render
         browser = await playwright.chromium.launch({
-            headless: true
+            headless: true,
+            args: [
+                '--disable-dev-shm-usage',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-gpu'
+            ]
         });
 
         const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            viewport: { width: 1920, height: 1080 }
         });
 
         const page = await context.newPage();
+
+        // Intercepter et bloquer les ressources non nécessaires
+        await page.route('**/*', (route) => {
+            const resourceType = route.request().resourceType();
+            if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                route.abort();
+            } else {
+                route.continue();
+            }
+        });
 
         await page.goto(url, {
             waitUntil: 'domcontentloaded',
             timeout: 30000
         });
+
+        // Attendre que les éléments clés soient chargés
+        await page.waitForSelector('#productTitle', { timeout: 5000 }).catch(() => null);
 
         const data = await page.evaluate(() => {
             const title = document.querySelector('#productTitle')?.textContent?.trim() || '';
@@ -52,7 +73,8 @@ app.post('/scrape', async (req, res) => {
                 '#priceblock_ourprice',
                 '.a-price .a-offscreen',
                 '#price_inside_buybox',
-                '.a-price-whole'
+                '.a-price-whole',
+                '#corePrice_feature_div .a-offscreen'
             ];
 
             let price = '';
@@ -64,14 +86,30 @@ app.post('/scrape', async (req, res) => {
                 }
             }
 
-            const imageElement = document.querySelector('#landingImage') as HTMLImageElement;
-            const image = imageElement?.src || '';
+            // Récupération des images
+            const photos: string[] = [];
+            const imageElements = document.querySelectorAll('#altImages img');
+            imageElements.forEach((img: Element) => {
+                const src = (img as HTMLImageElement).src;
+                if (src && !src.includes('sprite')) {
+                    const highResSrc = src.replace(/\._.*_\./, '.');
+                    photos.push(highResSrc);
+                }
+            });
+
+            // Si pas d'images dans altImages, essayer l'image principale
+            if (photos.length === 0) {
+                const mainImage = document.querySelector('#landingImage') as HTMLImageElement;
+                if (mainImage?.src) {
+                    photos.push(mainImage.src);
+                }
+            }
 
             return {
                 title,
                 price,
-                image,
-                url: window.location.href
+                photos,
+                product_url: window.location.href
             } as ProductData;
         });
 
@@ -86,7 +124,13 @@ app.post('/scrape', async (req, res) => {
             error: error instanceof Error ? error.message : 'Erreur inconnue'
         });
     } finally {
-        if (browser) await browser.close();
+        if (browser) {
+            try {
+                await browser.close();
+            } catch (error) {
+                console.error('Erreur lors de la fermeture du navigateur:', error);
+            }
+        }
     }
 });
 
