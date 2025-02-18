@@ -30,14 +30,17 @@ app.post('/scrape', async (req, res) => {
     let browser = null;
 
     try {
-        // Configuration spécifique pour Render
         browser = await playwright.chromium.launch({
             headless: true,
             args: [
                 '--disable-dev-shm-usage',
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
-                '--disable-gpu'
+                '--disable-gpu',
+                '--single-process',
+                '--disable-background-networking',
+                '--disable-software-rasterizer',
+                '--disable-breakpad'
             ]
         });
 
