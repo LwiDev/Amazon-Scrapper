@@ -1,5 +1,5 @@
 import express from 'express';
-import playwright from 'playwright';
+import puppeteer from 'puppeteer';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
@@ -30,51 +30,24 @@ app.post('/scrape', async (req, res) => {
     let browser = null;
 
     try {
-        // Configuration spécifique pour Render sans dépendances système
-        browser = await playwright.chromium.launch({
-            headless: true,
-            chromiumSandbox: false,
+        browser = await puppeteer.launch({
+            headless: "new",
             args: [
-                '--disable-dev-shm-usage',
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
-                '--disable-gpu',
-                '--no-zygote',
-                '--single-process',
-                '--disable-extensions'
+                '--disable-dev-shm-usage'
             ]
         });
 
-        const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-            viewport: { width: 1920, height: 1080 },
-            ignoreHTTPSErrors: true,
-            javaScriptEnabled: true
-        });
+        const page = await browser.newPage();
 
-        const page = await context.newPage();
+        // Configuration du User Agent
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
 
-        // Gestion optimisée des ressources
-        await page.route('**/*', async route => {
-            const request = route.request();
-            const resourceType = request.resourceType();
-            const shouldBlock = ['image', 'stylesheet', 'font', 'media'].includes(resourceType);
-
-            if (shouldBlock) {
-                await route.abort();
-            } else {
-                await route.continue();
-            }
-        });
-
-        // Timeout plus long pour la navigation
         await page.goto(url, {
-            waitUntil: 'networkidle',
+            waitUntil: 'domcontentloaded',
             timeout: 60000
         });
-
-        // Attendre que le contenu soit chargé
-        await page.waitForLoadState('domcontentloaded');
 
         const data = await page.evaluate(() => {
             const title = document.querySelector('#productTitle')?.textContent?.trim() || '';
@@ -97,28 +70,18 @@ app.post('/scrape', async (req, res) => {
                 }
             }
 
-            // Collecte des images
             const photos: string[] = [];
             const mainImage = document.querySelector('#landingImage') as HTMLImageElement;
             if (mainImage?.src) {
                 photos.push(mainImage.src);
             }
 
-            // Images alternatives
-            const altImages = document.querySelectorAll('#altImages img');
-            altImages.forEach((img: Element) => {
-                const src = (img as HTMLImageElement).src;
-                if (src && !src.includes('sprite')) {
-                    photos.push(src.replace(/\._.*_\./, '.'));
-                }
-            });
-
             return {
                 title,
                 price,
-                photos: [...new Set(photos)], // Éliminer les doublons
+                photos,
                 product_url: window.location.href
-            } as ProductData;
+            };
         });
 
         if (!data.title) {
